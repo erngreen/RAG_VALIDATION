@@ -1,0 +1,109 @@
+Sheet,Field,Type,Description,Source/Derivation,AllowedValues/Notes
+Incidents_CY23_Sample,CALLTYPE,text,"Call type code (e.g., INC). Used in prompt context and optional stratification.",CY23.xlsx,
+Incidents_CY23_Sample,CY23_MissionArea,text,Mission area from CY23 source fields (preferred ground truth when present).,CY23.xlsx,
+Incidents_CY23_Sample,DATE_TIME_RECEIVED,datetime/text,Timestamp for when the incident/call was received (if available).,CY23.xlsx / CALLS join,
+Incidents_CY23_Sample,DESCRIPTION_OF_INCIDENT,long text,Free-text incident narrative; primary input for retrieval and prompting.,CY23.xlsx (INCIDENT_COMMONS.DESCRIPTION_OF_INCIDENT),
+Incidents_CY23_Sample,ExpectedActionChecklist,long text,Checklist extracted from procedural lines in the selected chunk.,Derived from chunk text via procedural sentence extraction,
+Incidents_CY23_Sample,ExpectedChunkIDs,text,Selected chunk ID(s) to serve as the expected grounding reference for this incident.,Retriever output (post procedural rerank where applicable),
+Incidents_CY23_Sample,ExpectedMissionArea,text,Mission area expectation used for scoring; aligned to CY23_MissionArea when available.,Derived from CY23 (or fallback heuristics),
+Incidents_CY23_Sample,ExpectedURLs,text (URL),URL(s) corresponding to ExpectedChunkIDs (used as expected citations).,Lookup from SOP_Chunks by ChunkID,
+Incidents_CY23_Sample,INCIDENT_LOCATION,text,Raw location field associated with the incident.,CY23.xlsx,
+Incidents_CY23_Sample,LOCATION_NEAREST_CITY,text,Nearest city (when available).,CY23.xlsx,
+Incidents_CY23_Sample,LOCATION_STATE,text,State/region associated with the incident.,CY23.xlsx,
+Incidents_CY23_Sample,MissionAreaConfidence(0-2),int,Numeric encoding of mission area confidence band.,Encoded from MissionAreaConfidenceBand,"2=High, 1=Medium, 0=Low"
+Incidents_CY23_Sample,MissionAreaConfidenceBand,text,Confidence band for mission area determination (High/Medium/Low).,Derived from similarity/match heuristics,High/Medium/Low
+Incidents_CY23_Sample,MissionAreaTop3_MissionAreas,text,Top-3 mission area candidates from retrieval (for reviewer context).,Derived from top-ranked chunks,
+Incidents_CY23_Sample,NeedsManualReview,bool,"Flag indicating the row should be manually reviewed (e.g., Low confidence or mismatch).",Derived rule based on confidence and/or consistency checks,Y/N or True/False
+Incidents_CY23_Sample,OriginalExpectedActionChecklist,long text,Pre-fix checklist before Medium procedural reranking was applied.,Saved from baseline retrieval prior to v8 fix,
+Incidents_CY23_Sample,OriginalExpectedChunkIDs,text,Pre-fix expected chunk IDs before Medium procedural reranking was applied.,Saved from baseline retrieval prior to v8 fix,
+Incidents_CY23_Sample,OriginalExpectedURLs,text (URL),Pre-fix expected URLs before Medium procedural reranking was applied.,Saved from baseline retrieval prior to v8 fix,
+Incidents_CY23_Sample,OriginalTopChunkSnippet,long text,Pre-fix snippet before Medium procedural reranking was applied.,Saved from baseline retrieval prior to v8 fix,
+Incidents_CY23_Sample,ProceduralChunkID,text,Alternate chunk chosen via procedural re-ranking for Medium confidence cases.,Retriever re-rank output (top-k similarity + procedural signal),
+Incidents_CY23_Sample,ProceduralChunkSimilarity,float,Similarity score for the procedural re-ranked chunk (audit).,Retriever similarity score for ProceduralChunkID,
+Incidents_CY23_Sample,ProceduralChunkURL,text (URL),URL corresponding to ProceduralChunkID.,Lookup from SOP_Chunks,
+Incidents_CY23_Sample,RetrievalConfidence(0-2),int,Numeric encoding of retrieval confidence band.,Encoded from RetrievalConfidenceBand,"2=High, 1=Medium, 0=Low"
+Incidents_CY23_Sample,RetrievalConfidenceBand,text,High/Medium/Low confidence for retrieval selection.,Thresholded from TopChunkScore,High/Medium/Low
+Incidents_CY23_Sample,RetrievedMissionArea,text,Mission area suggested by the retriever based on the selected SOP chunk's document label.,Derived from SOP_Chunks.MissionArea_Final for selected chunk,
+Incidents_CY23_Sample,SEQNOS,int,"Unique incident identifier; primary key to link incidents, prompts, and results.",CY23.xlsx,
+Incidents_CY23_Sample,TYPE_OF_INCIDENT,text,Incident type code/label. Used in prompt context and optional stratification.,CY23.xlsx,
+Incidents_CY23_Sample,TopChunkScore,float,Similarity score between incident narrative and selected chunk.,Retriever similarity score,
+Incidents_CY23_Sample,TopChunkSnippet,long text,Snippet of the selected chunk shown for context and reviewer auditing.,Derived from selected chunk text,
+Results_Template,AutoPassFail,text,Auto-evaluated pass/fail (if present).,Derived by rules,PASS/FAIL
+Results_Template,CY23_MissionArea,text,CY23 mission area field (if present).,From Test_Prompts / CY23,
+Results_Template,CitationScoringInstruction,text,Plain-language instruction for reviewer on how to score citations for this row.,Derived from CitationScoringMode,
+Results_Template,CitationScoringMode,text,Citations scoring mode: expected-match vs relevance-only.,From Test_Prompts,Expected-match / Relevance-only
+Results_Template,CitationsGrounded(0-2),int,Reviewer score: citations support claims; no fabrication.,Reviewer-entered (guided by CitationScoringMode),0/1/2
+Results_Template,Completeness(0-2),int,Reviewer score: checklist usefulness/completeness.,Reviewer-entered,0/1/2
+Results_Template,CriticalFailureFlag(Y/N),text,"Hard-stop fail indicator (fabricated citations, unsafe steps, major omissions).",Reviewer-entered or rule-driven,Y/N
+Results_Template,CriticalFailureNotes,long text,Notes supporting critical failure designation.,Reviewer-entered,
+Results_Template,CriticalFailureType,text,"Category of critical failure (e.g., fabricated citation, unsafe procedure).",Reviewer-entered,
+Results_Template,ExpectedChunkIDs,text,Expected chunk IDs (or guidance for relevance-only).,From Test_Prompts,
+Results_Template,ExpectedMissionArea,text,Expected mission area for scoring.,From Test_Prompts,
+Results_Template,ExpectedURLs,text (URL),Expected URLs for grounding.,From Test_Prompts,
+Results_Template,MissionAreaConfidence(0-2),int,Numeric mission area confidence.,From Test_Prompts,2/1/00
+Results_Template,MissionAreaConfidenceBand,text,Mission area confidence band for the row.,From Test_Prompts,
+Results_Template,MissionAreaTop3_MissionAreas,text,Top-3 mission area candidates.,From Test_Prompts,
+Results_Template,MissionMatch(0-2),int,Reviewer score: mission area correctness vs ExpectedMissionArea.,Reviewer-entered,0/1/2
+Results_Template,ModelName,text,Model identifier/version for the run.,User-entered,
+Results_Template,ModelOutput,long text,Paste the model response for this prompt here.,User-entered,
+Results_Template,NeedsManualReview,bool,Manual review flag.,From Test_Prompts,
+Results_Template,PassFail,text,PASS/FAIL determination (often formula-driven).,Derived from TotalScore and critical failure logic,PASS/FAIL
+Results_Template,RequireExpectedChunkMatch(Y/N),text,Whether exact expected chunk match is required.,Derived from CitationScoringMode,Y/N
+Results_Template,RetrievalConfidence(0-2),int,Numeric retrieval confidence.,From Test_Prompts,2/1/00
+Results_Template,RetrievalConfidenceBand,text,Retrieval confidence band.,From Test_Prompts,
+Results_Template,RetrievedMissionArea,text,Retriever suggested mission area.,From Test_Prompts,
+Results_Template,SEQNOS,int,Join key back to prompt/incident.,From Test_Prompts,
+Results_Template,Safety(0-2),int,Reviewer score: avoids unsafe/overconfident advice; uses verification language.,Reviewer-entered,0/1/2
+Results_Template,Tone(0-2),int,Reviewer score: operational tone appropriateness.,Reviewer-entered,0/1/2
+Results_Template,TotalScore(0-10),float,Aggregate score across dimensions (typically sum).,Computed or reviewer-entered,0–10
+Risk_Validation_Guide,Risk validation controls added (v3):,long text,Narrative guidance describing risk controls and how to use the workbook for LLM risk validation.,Author notes / workflow documentation,
+SOP_Chunks,BostonContext,text,Boston context note inherited from document index.,SOP index mapping,
+SOP_Chunks,ChunkID,text,Unique chunk identifier (document-hash + chunk index). Used for traceability and citation.,Chunking step,
+SOP_Chunks,ChunkText,long text,Chunk text extracted from PDF pages (OCR fallback where needed).,PDF text extraction + chunking,
+SOP_Chunks,DocumentTitle,text,Document title associated with the chunk.,SOP index mapping,
+SOP_Chunks,MissionArea,text,Mission area label for the chunk from the document index (may be blank).,SOP index mapping,
+SOP_Chunks,MissionArea_Final,text,Final mission area for the chunk (original if present else inferred).,Derived from SOP_Documents.MissionArea_Final,
+SOP_Chunks,PageEnd,int,Last PDF page number included in the chunk.,Chunking step,
+SOP_Chunks,PageStart,int,First PDF page number included in the chunk.,Chunking step,
+SOP_Chunks,ResolvedPDFURL,text (URL),Document URL associated with this chunk.,Extraction pipeline output,
+SOP_Chunks,action_density,float,Action keyword density (action_hits normalized by text length).,Computed from ChunkText,
+SOP_Chunks,action_hits,int,"Count of procedural/action keywords in the chunk (e.g., shall/must/notify).",Computed from ChunkText,
+SOP_Chunks,canon_ma,text,Canonicalized/normalized mission area for grouping/aggregation.,Normalization step,
+SOP_Documents,BostonContext,text,"Local (Sector Boston) context note for the document, used for reviewer context and prompt framing.",SOP index,
+SOP_Documents,DocTitle,text,Document title/name.,SOP index and/or extracted metadata,
+SOP_Documents,ExtractMethod,text,Text extraction method used (native PDF text vs OCR fallback).,Extraction pipeline output,
+SOP_Documents,InferenceConfidence,text,Confidence label for inferred mission area.,Inference step,High/Medium/Low (if used)
+SOP_Documents,InferenceRationale,text,Short rationale for inferred mission area assignment.,Inference step,
+SOP_Documents,InferredMissionArea,text,Mission area inferred for documents missing an index label.,Inference step on title/text similarity,
+SOP_Documents,MissionArea,text,Mission area label from the Boston SOP/doctrine index (may be blank for some docs).,uscg_boston_sop_with_context.xlsx,
+SOP_Documents,MissionArea_Final,text,Final mission area used downstream: MissionArea if present else InferredMissionArea.,Derived field,
+SOP_Documents,NumPages,int,Number of pages detected/extracted from the PDF.,Extraction pipeline output,
+SOP_Documents,ResolvedPDFURL,text (URL),Canonical resolved PDF URL used for download/linking and as the primary document identifier.,Extraction pipeline URL resolution,
+SOP_Documents,SheetName,text,Name of the sheet in the SOP index workbook where this row originated.,Multi-sheet ingest added field,
+SOP_Documents,SourceURL,text (URL),Original source URL as listed in the index (may differ from resolved URL).,SOP index,
+SOP_Documents,Status,text,"Document processing status (e.g., downloaded/extracted/failed).",Extraction pipeline output,
+Scoring_Rubric,0,text,Definition of score 0 for the dimension.,Rubric sheet,
+Scoring_Rubric,1,text,Definition of score 1 for the dimension.,Rubric sheet,
+Scoring_Rubric,2,text,Definition of score 2 for the dimension.,Rubric sheet,
+Scoring_Rubric,Dimension,text,Name of the scoring dimension.,Rubric sheet,
+Test_Prompts,CY23_MissionArea,text,Mission area from CY23 source fields (if present).,From Incidents_CY23_Sample.CY23_MissionArea,
+Test_Prompts,CitationScoringMode,text,How to score citations: require expected chunk match vs allow relevance-only.,Risk control based on retrieval confidence and evaluation goals,Expected-match / Relevance-only
+Test_Prompts,ExpectedActionChecklist,long text,Expected action checklist derived from SOP chunk text.,From Incidents_CY23_Sample.ExpectedActionChecklist,
+Test_Prompts,ExpectedChunkIDs,text,Expected chunk IDs used for grounding/citation scoring.,From Incidents_CY23_Sample.ExpectedChunkIDs,
+Test_Prompts,ExpectedMissionArea,text,Expected mission area for scoring.,From Incidents_CY23_Sample.ExpectedMissionArea,
+Test_Prompts,ExpectedURLs,text (URL),Expected URLs for grounding/citation scoring.,From Incidents_CY23_Sample.ExpectedURLs,
+Test_Prompts,MissionAreaConfidence(0-2),int,Numeric mission area confidence.,From Incidents_CY23_Sample.MissionAreaConfidence(0-2),2/1/00
+Test_Prompts,MissionAreaConfidenceBand,text,Mission area confidence band.,From Incidents_CY23_Sample.MissionAreaConfidenceBand,
+Test_Prompts,MissionAreaTop3_MissionAreas,text,Top-3 mission area candidates.,From Incidents_CY23_Sample.MissionAreaTop3_MissionAreas,
+Test_Prompts,NeedsManualReview,bool,Manual review flag.,From Incidents_CY23_Sample.NeedsManualReview,
+Test_Prompts,ProceduralChunkID,text,Procedural re-ranked chunk ID (Medium cases).,From Incidents_CY23_Sample.ProceduralChunkID,
+Test_Prompts,ProceduralChunkSimilarity,float,Similarity of procedural re-ranked chunk (if used).,From Incidents_CY23_Sample.ProceduralChunkSimilarity,
+Test_Prompts,ProceduralChunkURL,text (URL),URL for procedural re-ranked chunk.,From Incidents_CY23_Sample.ProceduralChunkURL,
+Test_Prompts,Prompt,long text,"Full prompt text to paste into the model; includes role framing, required outputs, and safety constraints.",Generated from incident fields + SOP expectations,
+Test_Prompts,RequireExpectedChunkMatch(Y/N),text,Whether exact expected chunk match is required when scoring citations.,Derived from CitationScoringMode,Y/N
+Test_Prompts,RetrievalConfidence(0-2),int,Numeric retrieval confidence.,From Incidents_CY23_Sample.RetrievalConfidence(0-2),2/1/00
+Test_Prompts,RetrievalConfidenceBand,text,Retrieval confidence band.,From Incidents_CY23_Sample.RetrievalConfidenceBand,
+Test_Prompts,RetrievedMissionArea,text,Mission area suggested by retrieval.,From Incidents_CY23_Sample.RetrievedMissionArea,
+Test_Prompts,SEQNOS,int,Join key back to Incidents_CY23_Sample.,Incidents_CY23_Sample,
+Test_Prompts,TopChunkScore,float,Similarity score for selected chunk.,From Incidents_CY23_Sample.TopChunkScore,
+Test_Prompts,TopChunkSnippet,long text,Context snippet from the selected chunk.,From Incidents_CY23_Sample.TopChunkSnippet,

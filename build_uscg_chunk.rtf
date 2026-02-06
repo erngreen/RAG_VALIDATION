@@ -1,0 +1,310 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2867
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 import os\
+import re\
+import time\
+import pathlib\
+from urllib.parse import urljoin, urlparse\
+\
+import pandas as pd\
+import requests\
+from bs4 import BeautifulSoup\
+from pypdf import PdfReader\
+\
+from pdf2image import convert_from_path\
+import pytesseract\
+\
+# ====== CONFIG ======\
+# Use an absolute path if the file is not in the same folder as this script\
+INPUT_XLSX = "uscg_doctrine_sop.xlsx"\
+\
+OUTPUT_XLSX = "uscg_doctrine_sop_extracted_text_with_ocr.xlsx"\
+OUTPUT_DIR = "pdf_text_outputs"\
+\
+REQUEST_TIMEOUT = 45\
+SLEEP_BETWEEN_REQUESTS_SEC = 0.3\
+\
+OCR_LANG = "eng"\
+MIN_TEXT_CHARS_BEFORE_OCR = 40   # if extracted text < this, OCR that page\
+OCR_DPI = 250                    # 200\'96300 typical\
+\
+HEADERS = \{\
+    "User-Agent": "Mozilla/5.0 (compatible; USCG-Doc-Extractor/4.0)"\
+\}\
+# ====================\
+\
+# ---- Fix for openpyxl IllegalCharacterError ----\
+# Excel forbids certain ASCII control chars in cells (0\'9631 except tab/newline/carriage return)\
+_ILLEGAL_XL_CHARS = re.compile(r"[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]")\
+\
+def clean_for_excel(s) -> str:\
+    if s is None:\
+        return ""\
+    return _ILLEGAL_XL_CHARS.sub("", str(s))\
+\
+def safe_filename(s: str, max_len: int = 140) -> str:\
+    s = re.sub(r"[^\\w\\-\\. ]+", "", str(s)).strip().replace(" ", "_")\
+    return s[:max_len] if len(s) > max_len else s\
+\
+def pick_first_existing_col(df: pd.DataFrame, candidates: list[str]) -> str | None:\
+    cols_lower = \{c.lower(): c for c in df.columns\}\
+    for cand in candidates:\
+        if cand.lower() in cols_lower:\
+            return cols_lower[cand.lower()]\
+    return None\
+\
+def is_pdf_url(url: str) -> bool:\
+    return str(url).lower().split("?")[0].endswith(".pdf")\
+\
+def fetch(session: requests.Session, url: str) -> requests.Response:\
+    resp = session.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT, allow_redirects=True)\
+    resp.raise_for_status()\
+    return resp\
+\
+def find_pdf_links_on_page(html: str, base_url: str) -> list[str]:\
+    soup = BeautifulSoup(html, "lxml")\
+    pdfs = []\
+    for a in soup.find_all("a", href=True):\
+        full = urljoin(base_url, a["href"].strip())\
+        if is_pdf_url(full):\
+            pdfs.append(full)\
+\
+    # de-dup preserve order\
+    seen = set()\
+    out = []\
+    for u in pdfs:\
+        if u not in seen:\
+            seen.add(u)\
+            out.append(u)\
+    return out\
+\
+def get_pdf_candidates(session: requests.Session, url: str) -> tuple[list[str], str]:\
+    if not url or pd.isna(url):\
+        return [], "Missing URL"\
+\
+    url = str(url).strip()\
+\
+    if is_pdf_url(url):\
+        return [url], "Direct PDF"\
+\
+    try:\
+        resp = fetch(session, url)\
+        ctype = (resp.headers.get("Content-Type") or "").lower()\
+\
+        # Some servers serve PDF without .pdf extension\
+        if "application/pdf" in ctype:\
+            return [resp.url], "PDF via content-type"\
+\
+        pdfs = find_pdf_links_on_page(resp.text, resp.url)\
+        if pdfs:\
+            return pdfs, f"Found \{len(pdfs)\} PDF links on page"\
+        return [], "No PDF links found on page"\
+    except requests.RequestException as e:\
+        return [], f"Request failed: \{e.__class__.__name__\}"\
+\
+def download_pdf(session: requests.Session, pdf_url: str, out_path: str) -> tuple[str, int]:\
+    resp = session.get(pdf_url, headers=HEADERS, timeout=REQUEST_TIMEOUT, stream=True, allow_redirects=True)\
+    resp.raise_for_status()\
+\
+    total = 0\
+    with open(out_path, "wb") as f:\
+        for chunk in resp.iter_content(chunk_size=1024 * 256):\
+            if chunk:\
+                f.write(chunk)\
+                total += len(chunk)\
+    return resp.url, total\
+\
+def extract_text_pypdf(pdf_path: str) -> list[str]:\
+    reader = PdfReader(pdf_path)\
+    return [(p.extract_text() or "") for p in reader.pages]\
+\
+def ocr_page(pdf_path: str, page_num_1based: int) -> str:\
+    imgs = convert_from_path(\
+        pdf_path,\
+        dpi=OCR_DPI,\
+        first_page=page_num_1based,\
+        last_page=page_num_1based\
+    )\
+    if not imgs:\
+        return ""\
+    return pytesseract.image_to_string(imgs[0], lang=OCR_LANG) or ""\
+\
+def extract_pdf_text_by_page_with_ocr(pdf_path: str) -> tuple[list[str], str]:\
+    pages_text = extract_text_pypdf(pdf_path)\
+\
+    used_ocr = 0\
+    final_pages = []\
+    for idx, txt in enumerate(pages_text, start=1):\
+        cleaned = (txt or "").strip()\
+        if len(cleaned) < MIN_TEXT_CHARS_BEFORE_OCR:\
+            ocr_txt = (ocr_page(pdf_path, idx) or "").strip()\
+            if ocr_txt:\
+                final_pages.append(ocr_txt)\
+                used_ocr += 1\
+            else:\
+                final_pages.append(cleaned)\
+        else:\
+            final_pages.append(cleaned)\
+\
+    method = "pypdf.extract_text"\
+    if used_ocr:\
+        method += f" + OCR(\{used_ocr\} pages)"\
+    return final_pages, method\
+\
+def main():\
+    pathlib.Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)\
+\
+    # ---- Fix for FileNotFoundError: show cwd + enforce file exists ----\
+    print("Current working directory:", os.getcwd())\
+    if not os.path.exists(INPUT_XLSX):\
+        raise FileNotFoundError(\
+            f"INPUT_XLSX not found: \{INPUT_XLSX\}\\n"\
+            f"Either move the file into this folder OR set INPUT_XLSX to an absolute path."\
+        )\
+\
+    # Read all sheets\
+    xls = pd.ExcelFile(INPUT_XLSX)\
+    print("Sheets found:", xls.sheet_names)\
+\
+    session = requests.Session()\
+\
+    docs_rows = []\
+    pages_rows = []\
+\
+    for sheet_name in xls.sheet_names:\
+        df = pd.read_excel(xls, sheet_name=sheet_name)\
+\
+        # ---- Fix for missing 'Domain': auto-detect columns per sheet ----\
+        url_col = pick_first_existing_col(df, ["URL", "Url", "Link", "Href", "Hyperlink"])\
+        title_col = pick_first_existing_col(df, ["Document", "Doc", "Title", "Name", "Publication", "SOP", "Doctrine"])\
+        domain_col = pick_first_existing_col(df, ["Domain", "Mission Area", "MissionArea", "Area", "Category", "Program"])\
+        notes_col = pick_first_existing_col(df, ["Notes", "Note", "Comments", "Comment", "Context"])\
+\
+        if not url_col:\
+            print(f"Skipping sheet '\{sheet_name\}' (no URL column). Columns: \{list(df.columns)\}")\
+            continue\
+\
+        print(f"Processing sheet '\{sheet_name\}' using URL column '\{url_col\}'...")\
+\
+        for row_idx, row in df.iterrows():\
+            domain = row.get(domain_col, "") if domain_col else ""\
+            doc_label = row.get(title_col, f"Row_\{row_idx\}") if title_col else f"Row_\{row_idx\}"\
+            url = row.get(url_col, "")\
+            notes = row.get(notes_col, "") if notes_col else ""\
+\
+            pdf_candidates, resolve_note = get_pdf_candidates(session, url)\
+\
+            if not pdf_candidates:\
+                docs_rows.append(\{\
+                    "SheetName": clean_for_excel(sheet_name),\
+                    "Domain": clean_for_excel(domain),\
+                    "SourceRowDocument": clean_for_excel(doc_label),\
+                    "SourceURL": clean_for_excel(url),\
+                    "Notes": clean_for_excel(notes),\
+                    "ResolvedPDFURL": None,\
+                    "ResolveNote": resolve_note,\
+                    "Status": "NO_PDF_FOUND",\
+                    "BytesDownloaded": 0,\
+                    "NumPages": 0,\
+                    "ExtractMethod": None,\
+                    "FullTextFile": None,\
+                    "ExcerptFirst30kChars": ""\
+                \})\
+                continue\
+\
+            for pdf_idx, pdf_url in enumerate(pdf_candidates, start=1):\
+                status = "SKIPPED"\
+                final_pdf_url = None\
+                bytes_dl = 0\
+                num_pages = 0\
+                extract_method = None\
+                text_file = None\
+                excerpt = ""\
+\
+                try:\
+                    parsed = urlparse(pdf_url)\
+                    pdf_name_hint = os.path.basename(parsed.path) or f"file_\{pdf_idx\}.pdf"\
+\
+                    base_name = safe_filename(\
+                        f"\{sheet_name\}_\{row_idx:03d\}_\{pdf_idx:02d\}_\{doc_label\}_\{pdf_name_hint\}".replace(".pdf", "")\
+                    )\
+                    pdf_path = os.path.join(OUTPUT_DIR, base_name + ".pdf")\
+                    txt_path = os.path.join(OUTPUT_DIR, base_name + ".txt")\
+\
+                    if not os.path.exists(pdf_path):\
+                        final_pdf_url, bytes_dl = download_pdf(session, pdf_url, pdf_path)\
+                    else:\
+                        final_pdf_url = pdf_url\
+                        bytes_dl = os.path.getsize(pdf_path)\
+\
+                    pages_text, extract_method = extract_pdf_text_by_page_with_ocr(pdf_path)\
+                    num_pages = len(pages_text)\
+\
+                    full_text = "\\n\\n".join(\
+                        [f"--- Page \{p+1\} ---\\n\{t\}".rstrip() for p, t in enumerate(pages_text)]\
+                    ).strip()\
+\
+                    # ---- Fix for IllegalCharacterError: clean before writing to Excel ----\
+                    full_text_clean = clean_for_excel(full_text)\
+\
+                    with open(txt_path, "w", encoding="utf-8") as f:\
+                        f.write(full_text_clean)\
+\
+                    text_file = os.path.abspath(txt_path)\
+                    excerpt = clean_for_excel(full_text_clean[:30000])\
+                    status = "OK" if full_text_clean else "OK_BUT_EMPTY_TEXT"\
+\
+                    for p, t in enumerate(pages_text, start=1):\
+                        pages_rows.append(\{\
+                            "SheetName": clean_for_excel(sheet_name),\
+                            "Domain": clean_for_excel(domain),\
+                            "SourceRowDocument": clean_for_excel(doc_label),\
+                            "SourceURL": clean_for_excel(url),\
+                            "ResolvedPDFURL": clean_for_excel(final_pdf_url),\
+                            "PDFIndexWithinRow": pdf_idx,\
+                            "Page": p,\
+                            "Text": clean_for_excel(t)\
+                        \})\
+\
+                except requests.HTTPError as e:\
+                    code = e.response.status_code if e.response else ""\
+                    status = f"DOWNLOAD_HTTP_ERROR_\{code\}".strip("_")\
+                except requests.RequestException as e:\
+                    status = f"DOWNLOAD_ERROR_\{e.__class__.__name__\}"\
+                except Exception as e:\
+                    status = f"PROCESSING_ERROR_\{e.__class__.__name__\}"\
+\
+                docs_rows.append(\{\
+                    "SheetName": clean_for_excel(sheet_name),\
+                    "Domain": clean_for_excel(domain),\
+                    "SourceRowDocument": clean_for_excel(doc_label),\
+                    "SourceURL": clean_for_excel(url),\
+                    "Notes": clean_for_excel(notes),\
+                    "ResolvedPDFURL": clean_for_excel(final_pdf_url),\
+                    "ResolveNote": resolve_note,\
+                    "Status": status,\
+                    "BytesDownloaded": bytes_dl,\
+                    "NumPages": num_pages,\
+                    "ExtractMethod": extract_method,\
+                    "FullTextFile": text_file,\
+                    "ExcerptFirst30kChars": excerpt\
+                \})\
+\
+                time.sleep(SLEEP_BETWEEN_REQUESTS_SEC)\
+\
+    out_docs = pd.DataFrame(docs_rows)\
+    out_pages = pd.DataFrame(pages_rows)\
+\
+    with pd.ExcelWriter(OUTPUT_XLSX, engine="openpyxl") as writer:\
+        out_docs.to_excel(writer, index=False, sheet_name="Documents")\
+        out_pages.to_excel(writer, index=False, sheet_name="Pages")\
+\
+    print(f"Done.\\nWrote: \{OUTPUT_XLSX\}\\nPDFs/text in: \{os.path.abspath(OUTPUT_DIR)\}")\
+\
+if __name__ == "__main__":\
+    main()}
